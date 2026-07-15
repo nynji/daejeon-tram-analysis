@@ -1,0 +1,27 @@
+# 공통
+pandas
+numpy
+python-dotenv
+
+# 예측 (진웅)
+prophet
+statsmodels
+
+# 네트워크 / MCLP (대흥)
+networkx
+pulp
+# ortools  # 필요 시 주석 해제
+
+# 군집분석 (현서)
+scikit-learn
+dtaidistance  # DTW 거리 계산
+
+# XGBoost (현지)
+xgboost
+shap
+
+# 대시보드
+streamlit
+streamlit-folium
+folium
+plotly

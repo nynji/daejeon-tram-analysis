@@ -1,0 +1,29 @@
+# --- 원본 데이터 / 산출물 (대용량, git에 올리지 않음) ---
+data/*
+!data/.gitkeep
+outputs/*
+!outputs/.gitkeep
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pkl
+*.h5
+*.joblib
+.ipynb_checkpoints/
+.venv/
+venv/
+env/
+*.egg-info/
+
+# --- 환경변수 / 시크릿 ---
+.env
+*.key
+
+# --- OS / 에디터 ---
+.DS_Store
+.vscode/
+.idea/
+
+# --- Streamlit ---
+.streamlit/secrets.toml
