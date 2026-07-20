@@ -4,6 +4,9 @@ data/*
 outputs/*
 !outputs/.gitkeep
 
+# --- Network 모듈: HTML 지도 (대용량) ---
+src/network/outputs/*.html
+
 # --- Python ---
 __pycache__/
 *.py[cod]
