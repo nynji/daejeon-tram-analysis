@@ -1,0 +1,202 @@
+{
+  "run_name": "v3_modelB_alpha_threshold_tuned",
+  "include_segment_key": false,
+  "feature_matrix": "./output/features/xgb_feature_matrix_v3.parquet",
+  "n_features": 22,
+  "features": [
+    "V_segment",
+    "speed_last_10min",
+    "speed_ma_30min",
+    "speed_ma_1h",
+    "speed_change_rate",
+    "hour",
+    "dow",
+    "is_weekend",
+    "is_bottleneck_slot",
+    "betweenness_pre",
+    "betweenness_during",
+    "road_rank",
+    "lanes",
+    "lane_remain_ratio",
+    "incident_flag",
+    "incident_count",
+    "precipitation_mm",
+    "is_weather_alert",
+    "is_freezing",
+    "y_hat_t30",
+    "y_hat_lower_t30",
+    "y_hat_upper_t30"
+  ],
+  "best_alpha": 0.3,
+  "best_threshold": 0.25000000000000006,
+  "precision_floor": 0.45,
+  "best_iteration": 999,
+  "test_severe_recall": 0.719959609559071,
+  "test_severe_precision": 0.45145631067961167,
+  "test_macro_f1": 0.6368468599428088,
+  "test_accuracy": 0.8434572202864886,
+  "test_log_loss": 0.3455167105302616,
+  "val_severe_recall": 0.7609263764981526,
+  "val_severe_precision": 0.45761977021461087,
+  "detail": {
+    "train": {
+      "report": {
+        "정상": {
+          "precision": 0.9748755405562932,
+          "recall": 0.9649872750334835,
+          "f1-score": 0.9699062055501049,
+          "support": 7106502.0
+        },
+        "주의": {
+          "precision": 0.5537702523724002,
+          "recall": 0.5113620072318968,
+          "f1-score": 0.5317218875779175,
+          "support": 564997.0
+        },
+        "심각": {
+          "precision": 0.4699469904240766,
+          "recall": 0.797779309844334,
+          "f1-score": 0.5914746512785333,
+          "support": 165354.0
+        },
+        "accuracy": 0.9287552031408526,
+        "macro avg": {
+          "precision": 0.6661975944509234,
+          "recall": 0.7580428640365714,
+          "f1-score": 0.6977009148021852,
+          "support": 7836853.0
+        },
+        "weighted avg": {
+          "precision": 0.9338622435113444,
+          "recall": 0.9287552031408526,
+          "f1-score": 0.9303306263825035,
+          "support": 7836853.0
+        }
+      },
+      "confusion_matrix": [
+        [
+          6857684,
+          210033,
+          38785
+        ],
+        [
+          166076,
+          288918,
+          110003
+        ],
+        [
+          10660,
+          22778,
+          131916
+        ]
+      ],
+      "log_loss": 0.16090425185588417
+    },
+    "val": {
+      "report": {
+        "정상": {
+          "precision": 0.9438874875133849,
+          "recall": 0.9105663438273445,
+          "f1-score": 0.9269275556653375,
+          "support": 144241.0
+        },
+        "주의": {
+          "precision": 0.4822717288986508,
+          "recall": 0.43785609636985184,
+          "f1-score": 0.45899191570145687,
+          "support": 24572.0
+        },
+        "심각": {
+          "precision": 0.45761977021461087,
+          "recall": 0.7609263764981526,
+          "f1-score": 0.5715252631222715,
+          "support": 11097.0
+        },
+        "accuracy": 0.8367739425268189,
+        "macro avg": {
+          "precision": 0.6279263288755489,
+          "recall": 0.703116272231783,
+          "f1-score": 0.6524815781630219,
+          "support": 179910.0
+        },
+        "weighted avg": {
+          "precision": 0.8508468823244252,
+          "recall": 0.8367739425268189,
+          "f1-score": 0.8410956742493912,
+          "support": 179910.0
+        }
+      },
+      "confusion_matrix": [
+        [
+          131341,
+          9970,
+          2930
+        ],
+        [
+          6735,
+          10759,
+          7078
+        ],
+        [
+          1073,
+          1580,
+          8444
+        ]
+      ],
+      "log_loss": 0.3516033475751757
+    },
+    "test": {
+      "report": {
+        "정상": {
+          "precision": 0.9308051202296925,
+          "recall": 0.9274322359167521,
+          "f1-score": 0.9291156170141626,
+          "support": 41947.0
+        },
+        "주의": {
+          "precision": 0.4936610103374293,
+          "recall": 0.37540789083358056,
+          "f1-score": 0.4264891734771253,
+          "support": 6742.0
+        },
+        "심각": {
+          "precision": 0.45145631067961167,
+          "recall": 0.719959609559071,
+          "f1-score": 0.5549357893371384,
+          "support": 2971.0
+        },
+        "accuracy": 0.8434572202864886,
+        "macro avg": {
+          "precision": 0.6253074804155778,
+          "recall": 0.6742665787698012,
+          "f1-score": 0.6368468599428088,
+          "support": 51660.0
+        },
+        "weighted avg": {
+          "precision": 0.8461870230158535,
+          "recall": 0.8434572202864886,
+          "f1-score": 0.8419999424041134,
+          "support": 51660.0
+        }
+      },
+      "confusion_matrix": [
+        [
+          38903,
+          2196,
+          848
+        ],
+        [
+          2460,
+          2531,
+          1751
+        ],
+        [
+          432,
+          400,
+          2139
+        ]
+      ],
+      "log_loss": 0.3455167105302616
+    }
+  }
+}
