@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>1-2. 네트워크 구조 분석</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="../assets/css/common.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-root"></div>
+  <div class="main">
+    <div class="page-header">
+      <div>
+        <h1>1-2. 네트워크 구조 분석 (매개중심성)</h1>
+      </div>
+    </div>
+
+    <div class="notice-banner" id="static-notice"></div>
+
+    <div class="layout-2col">
+      <div>
+        <div class="panel">
+          <h2>매개중심성(C_B) 히트맵</h2>
+          <div id="map-1-2" class="map-container"></div>
+        </div>
+
+        <div class="panel">
+          <h2>원촌육교 사례 검증 패널 (2026.4)</h2>
+          <div id="wonchon-panel"></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel">
+          <h2>상위 매개중심성 구간 (Top 15)</h2>
+          <table class="data-table">
+            <thead><tr><th>순위</th><th>구간</th><th>우선순위 점수</th><th>등급</th></tr></thead>
+            <tbody id="top-n-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="../assets/js/nav.js"></script>
+<script src="../assets/js/map.js"></script>
+<script>
+function colorScale(v) {
+  // 0(파랑)->1(빨강) 그라데이션
+  const t = Math.max(0, Math.min(1, v));
+  const r = Math.round(255 * t);
+  const b = Math.round(255 * (1 - t));
+  return `rgb(${r},70,${b})`;
+}
+
+(async function () {
+  AppNav.renderNav("1-2", "..");
+
+  const betweenness = await fetch("../data/betweenness.json").then((r) => r.json());
+  document.getElementById("static-notice").textContent = betweenness.calc_basis_note;
+
+  const wonchon = betweenness.wonchon_case_study;
+  document.getElementById("wonchon-panel").innerHTML = wonchon.available
+    ? ""
+    : `<div class="empty-state"><div class="icon">🚧</div>${wonchon.note}</div>`;
+
+  const map = AppMap.initMap("map-1-2", { zoom: 12 });
+  const maxScore = Math.max(...betweenness.corridors.map((c) => c.bc_score_mean));
+
+  betweenness.corridors.forEach((c) => {
+    if (!c.geometry.coordinates.length) return;
+    const latlngs = c.geometry.coordinates.map((line) => line.map(([lng, lat]) => [lat, lng]));
+    const norm = maxScore > 0 ? c.bc_score_mean / maxScore : 0;
+    const layer = L.polyline(latlngs, { color: colorScale(norm), weight: 3.5, opacity: 0.85 }).addTo(map);
+    layer.on("click", () => {
+      const mid = latlngs[0][Math.floor(latlngs[0].length / 2)] || latlngs[0][0];
+      L.popup().setLatLng(mid).setContent(`
+        <div class="popup-title">${c.segment_name}</div>
+        <div class="popup-row">평균 C_B: ${c.bc_score_mean.toFixed(4)}</div>
+        <div class="popup-row">우선순위 점수: ${c.priority_score ?? "-"} · ${c.risk_grade ?? ""}</div>
+        <div class="popup-row">순위: ${c.rank ?? "-"}위 / 97개 코리도</div>
+      `).openOn(map);
+    });
+  });
+
+  const tbody = document.getElementById("top-n-body");
+  tbody.innerHTML = betweenness.top_n.map((r) => `
+    <tr>
+      <td>${r.rank}</td>
+      <td>${r.segment_name}</td>
+      <td>${r.priority_score}</td>
+      <td>${r.risk_grade}</td>
+    </tr>`).join("");
+})();
+</script>
+</body>
+</html>

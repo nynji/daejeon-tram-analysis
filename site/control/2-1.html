@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>2-1. 실시간 병목 경보 지도</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="../assets/css/common.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-root"></div>
+  <div class="main">
+    <div class="page-header">
+      <div>
+        <h1>🚨 실시간 병목 경보 지도</h1>
+        <div class="subtitle">관제 요원 기본 랜딩 화면 · 구간별 정상/주의/심각 상태를 즉시 인지·대응</div>
+      </div>
+      <div id="as-of-label" class="subtitle"></div>
+    </div>
+
+    <div id="incident-banner" class="notice-banner" style="display:none;"></div>
+
+    <div class="layout-2col">
+      <div>
+        <div class="panel">
+          <div id="map-2-1" class="map-container"></div>
+          <div style="margin-top:14px;" class="slider-row">
+            <span class="subtitle" style="white-space:nowrap;">시간 이동</span>
+            <input type="range" id="time-slider" min="0" value="0" />
+            <span class="slider-time" id="slider-time-label"></span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel">
+          <h2>경보 타임라인</h2>
+          <div id="alert-timeline"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="../assets/js/nav.js"></script>
+<script src="../assets/js/map.js"></script>
+<script>
+const FEATURE_LABEL = {
+  V_segment: "현재 구간 속도", speed_last_10min: "최근 10분 속도", speed_ma_30min: "30분 이동평균 속도",
+  speed_ma_1h: "1시간 이동평균 속도", speed_change_rate: "속도 변화율", hour: "시간대", dow: "요일",
+  is_weekend: "주말 여부", is_bottleneck_slot: "상습 병목 시간대", betweenness_pre: "공사 전 매개중심성",
+  betweenness_during: "공사 중 매개중심성", road_rank: "도로 등급", lanes: "차로 수",
+  lane_remain_ratio: "차로 잔존율", incident_flag: "돌발 발생 여부", incident_count: "돌발 건수",
+  precipitation_mm: "강수량", is_weather_alert: "기상특보 여부", is_freezing: "결빙 위험",
+  y_hat_t30: "Prophet 30분 후 예측속도", y_hat_lower_t30: "예측 하한", y_hat_upper_t30: "예측 상한",
+};
+
+(async function () {
+  AppNav.renderNav("2-1", "..");
+
+  const [segCatalog, snapshot, timeline] = await Promise.all([
+    fetch("../data/segments.json").then((r) => r.json()),
+    fetch("../data/snapshot_latest.json").then((r) => r.json()),
+    fetch("../data/timeline_frames.json").then((r) => r.json()),
+  ]);
+
+  document.getElementById("as-of-label").textContent = `기준 시각: ${snapshot.generated_from_timestamp} (시뮬레이션)`;
+
+  let snapshotByKey = Object.fromEntries(snapshot.segments.map((s) => [s.segment_key, s]));
+
+  const map = AppMap.initMap("map-2-1", { zoom: 12 });
+  let layers = AppMap.drawSegments(map, segCatalog.segments, snapshotByKey, showPopup);
+  AppMap.zoomToSevere(map, layers); // REQ-2-1-2: 적색 구간 자동 확대
+
+  renderTimelinePanel(snapshot);
+  setupSlider(timeline, segCatalog);
+
+  function showPopup(seg, worst) {
+    if (!worst) return;
+    const shapLines = worst.shap_top
+      .slice(0, 3)
+      .map((s) => `${FEATURE_LABEL[s.feature] || s.feature} (${s.value > 0 ? "+" : ""}${s.value})`)
+      .join(", ");
+    const spillover = worst.betweenness_during > 0.01 ? "간선 연결성이 높아 인접 구간 파급 우려 높음" : "제한적 파급 예상";
+    const latlng = firstLatLng(seg);
+    L.popup()
+      .setLatLng(latlng)
+      .setContent(`
+        <div class="popup-title">${seg.from_station_name} ↔ ${seg.to_station_name}</div>
+        <div class="popup-row">${worst.risk_grade} · 현재 속도 ${worst.V_segment}km/h · 30분후 예측 ${worst.y_hat_t30 ?? "-"}km/h</div>
+        <div class="popup-row">기인 요인: ${shapLines}</div>
+        <div class="popup-row">파급 예상 범위: ${spillover}</div>
+        <div class="popup-row"><a href="../analysis/1-1.html?seg=${encodeURIComponent(Object.values(seg.directions)[0])}">상세 분석 보기(1-1) →</a></div>
+      `)
+      .openOn(map);
+  }
+
+  function firstLatLng(seg) {
+    const line = seg.geometry.coordinates[0];
+    if (!line || !line.length) return map.getCenter();
+    const mid = line[Math.floor(line.length / 2)];
+    return [mid[1], mid[0]];
+  }
+
+  function renderTimelinePanel(snapshot) {
+    const rank = { "심각": 2, "주의": 1, "정상": 0 };
+    const sorted = [...snapshot.segments].sort((a, b) => rank[b.predicted_class] - rank[a.predicted_class]).filter(s => s.predicted_class !== "정상").slice(0, 25);
+    const html = sorted.map((s) => `
+      <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border);">
+        <div>
+          <div style="font-size:13px;">${s.segment_key.replace(/_/g, " ")}</div>
+          <div class="subtitle" style="font-size:11.5px;">현재 ${s.V_segment}km/h → 30분후 ${s.y_hat_t30 ?? "-"}km/h</div>
+        </div>
+        <span class="badge ${s.predicted_class === "심각" ? "severe" : "warning"}">${s.risk_grade}</span>
+      </div>`).join("");
+    document.getElementById("alert-timeline").innerHTML = html || `<div class="empty-state">현재 경보 없음</div>`;
+  }
+
+  function setupSlider(timeline, segCatalog) {
+    const slider = document.getElementById("time-slider");
+    slider.max = timeline.frames.length - 1;
+    const asOfIdx = timeline.frames.findIndex((f) => f.timestamp === timeline.as_of);
+    slider.value = asOfIdx >= 0 ? asOfIdx : 0;
+    updateLabel();
+
+    slider.addEventListener("input", () => {
+      const frame = timeline.frames[+slider.value];
+      updateLabel();
+      const frameSnapByKey = {};
+      Object.entries(frame.segments).forEach(([key, v]) => {
+        frameSnapByKey[key] = { predicted_class: v.predicted_class, V_segment: v.V_segment, shap_top: [], y_hat_t30: null, betweenness_during: 0, risk_grade: v.predicted_class === "심각" ? "🔴 심각" : v.predicted_class === "주의" ? "🟡 주의" : "🟢 정상" };
+      });
+      Object.values(layers).forEach((l) => map.removeLayer(l.layer));
+      layers = AppMap.drawSegments(map, segCatalog.segments, frameSnapByKey, showPopup);
+    });
+
+    function updateLabel() {
+      const frame = timeline.frames[+slider.value];
+      const isNow = frame.timestamp === timeline.as_of;
+      document.getElementById("slider-time-label").textContent = `${frame.timestamp}${isNow ? " (현재)" : ""}`;
+    }
+  }
+})();
+</script>
+</body>
+</html>

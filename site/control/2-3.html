@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>2-3. AMR 거점 배치 관제</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="../assets/css/common.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-root"></div>
+  <div class="main">
+    <div class="page-header">
+      <div>
+        <h1>2-3. AMR 거점 배치 관제 (MCLP)</h1>
+        <div class="subtitle">MCLP 산출 결과(거점 좌표)를 상시 표출하고 배치 근거를 설명하는 화면</div>
+      </div>
+    </div>
+
+    <div class="notice-banner">
+      🚧 준비 중입니다. 이 저장소에는 MCLP(최대커버리지입지선정) 최적화 결과(거점 좌표 X_j, 수요가중치 w_i,
+      위험후보지 J_danger 목록)가 아직 산출되어 있지 않아, 이번 버전에서는 화면 레이아웃 없이 안내만 제공합니다.
+    </div>
+
+    <div class="panel">
+      <h2>제공 예정 기능</h2>
+      <ul style="color:var(--text-dim); line-height:1.9; padding-left:20px;">
+        <li>거점 지도 — X_j=1 선정 거점 마커, 커버리지 반경(R_max) 원</li>
+        <li>거점 클릭 팝업 — 배치 사유(수요가중치 w_i, XGBoost 위험도, 군집 유형), 커버 수요지점 수</li>
+        <li>선정 근거 요약 패널 — 거점이 커버하는 구간들의 "XGBoost 확률 + 클러스터 유형" 조합 표</li>
+        <li>위험후보지(J_danger) 제외 표시</li>
+        <li>거점 재계산 이력 타임라인 (기본 1일 1회)</li>
+        <li>설치 상한(P) what-if 시뮬레이션 슬라이더 (관리자용)</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script src="../assets/js/nav.js"></script>
+<script>AppNav.renderNav("2-3", "..");</script>
+</body>
+</html>

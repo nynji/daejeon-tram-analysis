@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>1-1. 예측 & 임계도달</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="../assets/css/common.css" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-root"></div>
+  <div class="main">
+    <div class="page-header">
+      <div>
+        <h1>1-1. 예측 & 임계도달 (Prophet + XGBoost)</h1>
+        <div class="subtitle">개별 구간의 예측 파이프라인 산출물을 검증·설명합니다.</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>구간 선택</h2>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <select id="tool-select" class="control-select"></select>
+        <select id="segment-select" class="control-select"></select>
+        <select id="direction-select" class="control-select">
+          <option value="AB">AB 방향</option>
+          <option value="BA">BA 방향</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="layout-2col">
+      <div>
+        <div class="panel">
+          <h2>Prophet 예측 — 실측 vs y_hat (95% 신뢰구간)</h2>
+          <div class="subtitle" id="prophet-note" style="margin-bottom:8px;"></div>
+          <canvas id="prophet-chart" height="110"></canvas>
+        </div>
+
+        <div class="panel">
+          <h2 style="cursor:pointer;" id="sarima-toggle">▸ 베이스라인 비교: Prophet vs SARIMA (클릭하여 펼치기)</h2>
+          <div id="sarima-body" style="display:none;">
+            <div class="empty-state">
+              <div class="icon">🛠️</div>
+              SARIMA 베이스라인 산출물이 아직 준비되지 않았습니다. 추후 RMSE/MAE 비교표가 이 위치에 표시될 예정입니다.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel">
+          <h2>XGBoost 임계도달 확률</h2>
+          <div id="gauge-rows"></div>
+        </div>
+
+        <div class="panel">
+          <h2>SHAP 워터폴 — 기인 변수 기여도</h2>
+          <canvas id="shap-chart" height="220"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../assets/js/nav.js"></script>
+<script>
+const FEATURE_LABEL = {
+  V_segment: "현재 구간 속도", speed_last_10min: "최근 10분 속도", speed_ma_30min: "30분 이동평균 속도",
+  speed_ma_1h: "1시간 이동평균 속도", speed_change_rate: "속도 변화율", hour: "시간대", dow: "요일",
+  is_weekend: "주말 여부", is_bottleneck_slot: "상습 병목 시간대", betweenness_pre: "공사 전 매개중심성",
+  betweenness_during: "공사 중 매개중심성", road_rank: "도로 등급", lanes: "차로 수",
+  lane_remain_ratio: "차로 잔존율", incident_flag: "돌발 발생 여부", incident_count: "돌발 건수",
+  precipitation_mm: "강수량", is_weather_alert: "기상특보 여부", is_freezing: "결빙 위험",
+  y_hat_t30: "Prophet 30분 후 예측속도", y_hat_lower_t30: "예측 하한", y_hat_upper_t30: "예측 상한",
+};
+const RISK_COLOR = { "정상": "#2ecc71", "주의": "#f1c40f", "심각": "#e74c3c" };
+
+let prophetChart, shapChart;
+
+(async function () {
+  AppNav.renderNav("1-1", "..");
+
+  const [segCatalog, snapshot] = await Promise.all([
+    fetch("../data/segments.json").then((r) => r.json()),
+    fetch("../data/snapshot_latest.json").then((r) => r.json()),
+  ]);
+  const snapshotByKey = Object.fromEntries(snapshot.segments.map((s) => [s.segment_key, s]));
+
+  const toolSelect = document.getElementById("tool-select");
+  const segSelect = document.getElementById("segment-select");
+  const dirSelect = document.getElementById("direction-select");
+
+  segCatalog.tools.forEach((t) => {
+    const opt = document.createElement("option");
+    opt.value = t.tool_no;
+    opt.textContent = `${t.tool_no}공구`;
+    toolSelect.appendChild(opt);
+  });
+
+  function populateSegments(toolNo) {
+    segSelect.innerHTML = "";
+    segCatalog.segments
+      .filter((s) => String(s.tool_no) === String(toolNo))
+      .forEach((s) => {
+        const opt = document.createElement("option");
+        opt.value = s.segment_id;
+        opt.textContent = `${s.from_station_name} ↔ ${s.to_station_name}`;
+        segSelect.appendChild(opt);
+      });
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const presetKey = params.get("seg"); // e.g. SEG_01_201_202_AB
+
+  let initialTool = segCatalog.tools[0].tool_no;
+  let initialSeg = null;
+  let initialDir = "AB";
+  if (presetKey) {
+    const dir = presetKey.slice(-2);
+    const segId = presetKey.slice(0, -3);
+    const found = segCatalog.segments.find((s) => s.segment_id === segId);
+    if (found) {
+      initialTool = found.tool_no;
+      initialSeg = segId;
+      initialDir = dir;
+    }
+  }
+
+  toolSelect.value = initialTool;
+  populateSegments(initialTool);
+  if (initialSeg) segSelect.value = initialSeg;
+  dirSelect.value = initialDir;
+
+  toolSelect.addEventListener("change", () => { populateSegments(toolSelect.value); load(); });
+  segSelect.addEventListener("change", load);
+  dirSelect.addEventListener("change", load);
+
+  document.getElementById("sarima-toggle").addEventListener("click", () => {
+    const body = document.getElementById("sarima-body");
+    const show = body.style.display === "none";
+    body.style.display = show ? "block" : "none";
+    document.getElementById("sarima-toggle").textContent =
+      (show ? "▾" : "▸") + " 베이스라인 비교: Prophet vs SARIMA (클릭하여 " + (show ? "접기" : "펼치기") + ")";
+  });
+
+  async function load() {
+    const segId = segSelect.value;
+    const dir = dirSelect.value;
+    const segmentKey = `${segId}_${dir}`;
+    const snap = snapshotByKey[segmentKey];
+
+    renderGauge(snap);
+    renderShap(snap);
+
+    try {
+      const prophetData = await fetch(`../data/prophet/${segmentKey}.json`).then((r) => {
+        if (!r.ok) throw new Error("not found");
+        return r.json();
+      });
+      renderProphet(prophetData);
+    } catch (e) {
+      document.getElementById("prophet-note").textContent = "이 구간/방향의 Prophet 예측 데이터가 없습니다.";
+      if (prophetChart) { prophetChart.destroy(); prophetChart = null; }
+    }
+  }
+
+  function renderGauge(snap) {
+    const root = document.getElementById("gauge-rows");
+    if (!snap) { root.innerHTML = `<div class="empty-state">데이터 없음</div>`; return; }
+    root.innerHTML = Object.entries(snap.proba).map(([cls, p]) => `
+      <div style="margin-bottom:10px;">
+        <div style="display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:4px;">
+          <span>${cls}</span><span>${(p * 100).toFixed(1)}%</span>
+        </div>
+        <div style="background:var(--panel-2); border-radius:6px; height:10px; overflow:hidden;">
+          <div style="width:${p * 100}%; height:100%; background:${RISK_COLOR[cls]};"></div>
+        </div>
+      </div>`).join("") +
+      `<div class="subtitle">현재 속도 ${snap.V_segment}km/h · 30분 후 예측 ${snap.y_hat_t30 ?? "-"}km/h · 예측 등급: <span class="badge ${snap.predicted_class === "심각" ? "severe" : snap.predicted_class === "주의" ? "warning" : "normal"}">${snap.risk_grade}</span></div>`;
+  }
+
+  function renderShap(snap) {
+    if (shapChart) shapChart.destroy();
+    if (!snap) return;
+    const items = [...snap.shap_top].sort((a, b) => a.value - b.value);
+    shapChart = new Chart(document.getElementById("shap-chart"), {
+      type: "bar",
+      data: {
+        labels: items.map((i) => FEATURE_LABEL[i.feature] || i.feature),
+        datasets: [{
+          data: items.map((i) => i.value),
+          backgroundColor: items.map((i) => (i.value >= 0 ? "#e74c3c" : "#3aa0ff")),
+        }],
+      },
+      options: {
+        indexAxis: "y",
+        plugins: { legend: { display: false }, title: { display: true, text: `예측 클래스(${snap.predicted_class}) 기여도, bias=${snap.shap_bias}`, color: "#9fb0c0" } },
+        scales: {
+          x: { ticks: { color: "#9fb0c0" }, grid: { color: "#2a3a4a" } },
+          y: { ticks: { color: "#e6edf3" }, grid: { display: false } },
+        },
+      },
+    });
+  }
+
+  function renderProphet(data) {
+    document.getElementById("prophet-note").textContent = data.is_low_performance
+      ? "⚠️ 이 구간은 Prophet 성능이 낮게 평가된 구간입니다(저성능 구간 폴더 기준)."
+      : `변화점 ${data.changepoints.length}개 감지됨`;
+
+    const labels = data.series.map((r) => r.t);
+    const changepointSet = new Set(data.changepoints);
+
+    if (prophetChart) prophetChart.destroy();
+    prophetChart = new Chart(document.getElementById("prophet-chart"), {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          { label: "실측", data: data.series.map((r) => r.y), borderColor: "#3aa0ff", pointRadius: 0, borderWidth: 1.5, spanGaps: true },
+          { label: "y_hat", data: data.series.map((r) => r.yhat), borderColor: "#e6edf3", pointRadius: 0, borderWidth: 1.5 },
+          { label: "신뢰구간 상한", data: data.series.map((r) => r.yhat_upper), borderColor: "rgba(230,237,243,0.25)", pointRadius: 0, borderWidth: 0, fill: "+1" },
+          { label: "신뢰구간 하한", data: data.series.map((r) => r.yhat_lower), borderColor: "rgba(230,237,243,0.25)", pointRadius: 0, borderWidth: 0 },
+        ],
+      },
+      options: {
+        interaction: { mode: "index", intersect: false },
+        plugins: { legend: { labels: { color: "#9fb0c0" } } },
+        scales: {
+          x: { ticks: { color: "#9fb0c0", maxTicksLimit: 12 }, grid: { color: "#2a3a4a" } },
+          y: { ticks: { color: "#9fb0c0" }, grid: { color: "#2a3a4a" } },
+        },
+      },
+      plugins: [{
+        id: "changepointLines",
+        afterDraw(chart) {
+          const { ctx, chartArea, scales } = chart;
+          if (!changepointSet.size) return;
+          labels.forEach((label, i) => {
+            const day = label.slice(0, 10);
+            if (changepointSet.has(day)) {
+              const x = scales.x.getPixelForValue(i);
+              ctx.save();
+              ctx.strokeStyle = "#f1c40f";
+              ctx.setLineDash([4, 4]);
+              ctx.beginPath();
+              ctx.moveTo(x, chartArea.top);
+              ctx.lineTo(x, chartArea.bottom);
+              ctx.stroke();
+              ctx.restore();
+            }
+          });
+        },
+      }],
+    });
+  }
+
+  load();
+})();
+</script>
+</body>
+</html>
