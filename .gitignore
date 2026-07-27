@@ -4,6 +4,18 @@ data/*
 outputs/*
 !outputs/.gitkeep
 
+# --- 데이터 확장자 (저장소 어디에 있든 커밋 방지) ---
+*.csv
+*.csv.gz
+*.parquet
+*.gpickle
+*.shp
+*.dbf
+*.shx
+*.prj
+*.cpg
+*.html
+
 # --- Python ---
 __pycache__/
 *.py[cod]
