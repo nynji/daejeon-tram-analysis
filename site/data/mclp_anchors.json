@@ -1,0 +1,105 @@
+{
+  "summary": {
+    "total_demand_points": 78634,
+    "covered_demand_points": 2278,
+    "coverage_ratio": 0.03,
+    "selected_anchors": 10,
+    "max_anchors_P": 10,
+    "coverage_radius_km": 1.0,
+    "objective_value": 204.07,
+    "solve_time_sec": 15.94,
+    "solver_status": "Optimal"
+  },
+  "anchors": [
+    {
+      "id": 202,
+      "name": "괴정로 노상주차장(3)",
+      "lat": 36.3375039,
+      "lng": 127.3853115,
+      "parking_slots": 34,
+      "covered_demand": 289,
+      "coverage_ratio": 0.00368
+    },
+    {
+      "id": 84,
+      "name": "신도시장 주차장",
+      "lat": 36.34917344,
+      "lng": 127.4464207,
+      "parking_slots": 22,
+      "covered_demand": 279,
+      "coverage_ratio": 0.00355
+    },
+    {
+      "id": 41,
+      "name": "삼성동 삼성물류센터 주변",
+      "lat": 36.34246615,
+      "lng": 127.4159097,
+      "parking_slots": 31,
+      "covered_demand": 240,
+      "coverage_ratio": 0.00305
+    },
+    {
+      "id": 104,
+      "name": "가제교~신안동 320 하상주차장",
+      "lat": 36.3342683,
+      "lng": 127.4389258,
+      "parking_slots": 275,
+      "covered_demand": 226,
+      "coverage_ratio": 0.00287
+    },
+    {
+      "id": 19,
+      "name": "중리미래공영주차장",
+      "lat": 36.36564901,
+      "lng": 127.4244429,
+      "parking_slots": 51,
+      "covered_demand": 197,
+      "coverage_ratio": 0.00251
+    },
+    {
+      "id": 213,
+      "name": "조달청길 노상주차장",
+      "lat": 36.3192753,
+      "lng": 127.3755648,
+      "parking_slots": 21,
+      "covered_demand": 76,
+      "coverage_ratio": 0.00097
+    },
+    {
+      "id": 431,
+      "name": "오류동제6노상",
+      "lat": 36.32712348,
+      "lng": 127.4038104,
+      "parking_slots": 7,
+      "covered_demand": 8,
+      "coverage_ratio": 0.00010
+    },
+    {
+      "id": 488,
+      "name": "산성동제11노상",
+      "lat": 36.31119411,
+      "lng": 127.394592,
+      "parking_slots": 9,
+      "covered_demand": 7,
+      "coverage_ratio": 0.00009
+    },
+    {
+      "id": 406,
+      "name": "부사동제4노상",
+      "lat": 36.3156536,
+      "lng": 127.428417,
+      "parking_slots": 36,
+      "covered_demand": 4,
+      "coverage_ratio": 0.00005
+    },
+    {
+      "id": 468,
+      "name": "호동제2노상",
+      "lat": 36.30307095,
+      "lng": 127.449074,
+      "parking_slots": 15,
+      "covered_demand": 3,
+      "coverage_ratio": 0.00004
+    }
+  ]
+}
