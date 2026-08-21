@@ -13,7 +13,6 @@
     <div class="page-header">
       <div>
         <h1>🧭 공구별 리포트</h1>
-        <div class="subtitle">구간 단위 분석을 공구 단위 행정 보고 포맷으로 요약</div>
       </div>
       <div>
         <select id="tool-select" class="control-select no-print"></select>
@@ -29,7 +28,16 @@
 <script>
 (async function () {
   AppNav.renderNav("report", "..");
-  const tools = await fetch("../data/tools.json").then((r) => r.json());
+  const [tools, mclp] = await Promise.all([
+    fetch("../data/tools.json").then((r) => r.json()),
+    fetch("../data/mclp_results.json").then((r) => r.json()),
+  ]);
+
+  // 2-3 기본 화면과 동일한 파라미터(P=15, 2500m, β=0.10, 기준 가중치, 서비스수준 적용)의 사전계산 시나리오
+  const amrDefault = mclp.scenarios.find((s) =>
+    s.stage === "SENSITIVITY" && s.p === 15 && s.radius_m === 2500 &&
+    Math.abs(s.beta - 0.1) < 0.001 && s.weight_variant === "BASE" && s.enforce_service_levels === true
+  );
 
   const select = document.getElementById("tool-select");
   tools.tools.forEach((t) => {
@@ -41,13 +49,18 @@
   select.addEventListener("change", () => render(select.value));
   render(tools.tools[0].tool_no);
 
+  function stateBadge(s) {
+    const cls = s === "심각" ? "severe" : s === "주의" ? "warning" : "normal";
+    return `<span class="badge ${cls}">${s}</span>`;
+  }
+
   function render(toolNo) {
     const t = tools.tools.find((x) => String(x.tool_no) === String(toolNo));
     const rows = t.segments.map((s) => `
       <tr>
         <td>${s.from_station_name} ↔ ${s.to_station_name}</td>
         <td>${s.start_date}</td>
-        <td>${s.direction_states.join(", ") || "-"}</td>
+        <td>${s.direction_states.length ? s.direction_states.map(stateBadge).join(" ") : "-"}</td>
       </tr>`).join("");
 
     document.getElementById("report-body").innerHTML = `
@@ -56,7 +69,14 @@
         <div class="kpi-card"><div class="label">공구 내 구간 수</div><div class="value">${t.segment_count}</div></div>
         <div class="kpi-card"><div class="label">위험 구간 수(주의+심각)</div><div class="value warning">${t.risky_segment_count}</div></div>
         <div class="kpi-card"><div class="label">공구 최고 위험도</div><div class="value">${t.worst_risk_grade}</div></div>
-        <div class="kpi-card"><div class="label">배치된 AMR 거점 수</div><div class="value">${t.amr_site_count}<span style="font-size:12px; color:var(--text-dim);"> (${t.amr_status_note})</span></div></div>
+        <div class="kpi-card">
+          <div class="label">AMR 거점 배치 (시 전체 · TD-CMCLP)</div>
+          <div class="value">${amrDefault ? amrDefault.selected_count : "-"}<span style="font-size:12px; color:var(--text-dim);"> 개소</span></div>
+          <div style="font-size:11.5px; color:var(--text-dim); margin-top:4px;">
+            ${amrDefault ? `커버율 ${(amrDefault.wcr * 100).toFixed(1)}%` : ""} · 공구 단위가 아닌 자치구 단위 최적화 결과 —
+            <a href="../control/2-3.html" style="color:var(--primary);">2-3에서 상세 보기 →</a>
+          </div>
+        </div>
       </div>
       <div class="panel">
         <h2>${t.tool_no}공구 구간 목록</h2>

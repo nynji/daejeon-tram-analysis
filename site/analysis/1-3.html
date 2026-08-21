@@ -21,19 +21,19 @@
     <div class="layout-2col">
       <div>
         <div class="panel">
-          <h2>클러스터 분포 지도</h2>
-          <div id="map-1-3" class="map-container"></div>
+          <h2>24시간 프로파일 오버레이</h2>
+          <select id="seg-select" class="control-select" style="margin-bottom:10px; width:100%;"></select>
+          <div class="chart-fill"><canvas id="profile-chart"></canvas></div>
         </div>
       </div>
       <div>
         <div class="panel">
-          <h2>24시간 프로파일 오버레이</h2>
-          <select id="seg-select" class="control-select" style="margin-bottom:10px; width:100%;"></select>
-          <canvas id="profile-chart" height="220"></canvas>
+          <h2>클러스터 분포 지도</h2>
+          <div id="map-1-3" class="map-container" style="height:280px;"></div>
         </div>
         <div class="panel">
           <h2>클러스터별 구간 수</h2>
-          <canvas id="donut-chart" height="200"></canvas>
+          <div class="chart-fill" style="min-height:180px;"><canvas id="donut-chart"></canvas></div>
         </div>
       </div>
     </div>
@@ -110,10 +110,11 @@ let profileChart;
         ],
       },
       options: {
-        plugins: { legend: { labels: { color: "#9fb0c0" } } },
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: "#1c2127" } } },
         scales: {
-          x: { ticks: { color: "#9fb0c0" }, grid: { color: "#2a3a4a" } },
-          y: { ticks: { color: "#9fb0c0" }, grid: { color: "#2a3a4a" } },
+          x: { ticks: { color: "#5f6b7c" }, grid: { color: "#e3e7ed" } },
+          y: { ticks: { color: "#5f6b7c" }, grid: { color: "#e3e7ed" } },
         },
       },
     });
@@ -125,7 +126,7 @@ let profileChart;
       labels: Object.keys(clusters.cluster_counts),
       datasets: [{ data: Object.values(clusters.cluster_counts), backgroundColor: Object.keys(clusters.cluster_counts).map((l) => CLUSTER_COLOR[l] || "#7f8c8d") }],
     },
-    options: { plugins: { legend: { labels: { color: "#9fb0c0" } } } },
+    options: { maintainAspectRatio: false, plugins: { legend: { labels: { color: "#1c2127" } } } },
   });
 })();
 </script>

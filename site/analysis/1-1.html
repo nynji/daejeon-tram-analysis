@@ -14,7 +14,6 @@
     <div class="page-header">
       <div>
         <h1>1-1. 예측 & 임계도달 (Prophet + XGBoost)</h1>
-        <div class="subtitle">개별 구간의 예측 파이프라인 산출물을 검증·설명합니다.</div>
       </div>
     </div>
 
@@ -35,17 +34,7 @@
         <div class="panel">
           <h2>Prophet 예측 — 실측 vs y_hat (95% 신뢰구간)</h2>
           <div class="subtitle" id="prophet-note" style="margin-bottom:8px;"></div>
-          <canvas id="prophet-chart" height="110"></canvas>
-        </div>
-
-        <div class="panel">
-          <h2 style="cursor:pointer;" id="sarima-toggle">▸ 베이스라인 비교: Prophet vs SARIMA (클릭하여 펼치기)</h2>
-          <div id="sarima-body" style="display:none;">
-            <div class="empty-state">
-              <div class="icon">🛠️</div>
-              SARIMA 베이스라인 산출물이 아직 준비되지 않았습니다. 추후 RMSE/MAE 비교표가 이 위치에 표시될 예정입니다.
-            </div>
-          </div>
+          <div class="chart-fill"><canvas id="prophet-chart"></canvas></div>
         </div>
       </div>
 
@@ -57,7 +46,7 @@
 
         <div class="panel">
           <h2>SHAP 워터폴 — 기인 변수 기여도</h2>
-          <canvas id="shap-chart" height="220"></canvas>
+          <div class="chart-fill"><canvas id="shap-chart"></canvas></div>
         </div>
       </div>
     </div>
@@ -137,14 +126,6 @@ let prophetChart, shapChart;
   segSelect.addEventListener("change", load);
   dirSelect.addEventListener("change", load);
 
-  document.getElementById("sarima-toggle").addEventListener("click", () => {
-    const body = document.getElementById("sarima-body");
-    const show = body.style.display === "none";
-    body.style.display = show ? "block" : "none";
-    document.getElementById("sarima-toggle").textContent =
-      (show ? "▾" : "▸") + " 베이스라인 비교: Prophet vs SARIMA (클릭하여 " + (show ? "접기" : "펼치기") + ")";
-  });
-
   async function load() {
     const segId = segSelect.value;
     const dir = dirSelect.value;
@@ -178,7 +159,11 @@ let prophetChart, shapChart;
           <div style="width:${p * 100}%; height:100%; background:${RISK_COLOR[cls]};"></div>
         </div>
       </div>`).join("") +
-      `<div class="subtitle">현재 속도 ${snap.V_segment}km/h · 30분 후 예측 ${snap.y_hat_t30 ?? "-"}km/h · 예측 등급: <span class="badge ${snap.predicted_class === "심각" ? "severe" : snap.predicted_class === "주의" ? "warning" : "normal"}">${snap.risk_grade}</span></div>`;
+      `<table class="sd-table" style="margin-top:10px;">
+        <tr><th>현재 속도</th><td>${snap.V_segment}km/h</td></tr>
+        <tr><th>30분 후 예측</th><td>${snap.y_hat_t30 ?? "-"}km/h</td></tr>
+        <tr><th>예측 등급</th><td><span class="badge ${snap.predicted_class === "심각" ? "severe" : snap.predicted_class === "주의" ? "warning" : "normal"}">${snap.risk_grade}</span></td></tr>
+      </table>`;
   }
 
   function renderShap(snap) {
@@ -196,13 +181,15 @@ let prophetChart, shapChart;
       },
       options: {
         indexAxis: "y",
-        plugins: { legend: { display: false }, title: { display: true, text: `예측 클래스(${snap.predicted_class}) 기여도, bias=${snap.shap_bias}`, color: "#9fb0c0" } },
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, title: { display: true, text: `예측 클래스(${snap.predicted_class}) 기여도, bias=${snap.shap_bias}`, color: "#5f6b7c" } },
         scales: {
-          x: { ticks: { color: "#9fb0c0" }, grid: { color: "#2a3a4a" } },
-          y: { ticks: { color: "#e6edf3" }, grid: { display: false } },
+          x: { ticks: { color: "#5f6b7c" }, grid: { color: "#e3e7ed" } },
+          y: { ticks: { color: "#1c2127", font: { weight: "500" } }, grid: { display: false } },
         },
       },
     });
+    requestAnimationFrame(() => requestAnimationFrame(() => shapChart && shapChart.resize()));
   }
 
   function renderProphet(data) {
@@ -219,18 +206,19 @@ let prophetChart, shapChart;
       data: {
         labels,
         datasets: [
-          { label: "실측", data: data.series.map((r) => r.y), borderColor: "#3aa0ff", pointRadius: 0, borderWidth: 1.5, spanGaps: true },
-          { label: "y_hat", data: data.series.map((r) => r.yhat), borderColor: "#e6edf3", pointRadius: 0, borderWidth: 1.5 },
-          { label: "신뢰구간 상한", data: data.series.map((r) => r.yhat_upper), borderColor: "rgba(230,237,243,0.25)", pointRadius: 0, borderWidth: 0, fill: "+1" },
-          { label: "신뢰구간 하한", data: data.series.map((r) => r.yhat_lower), borderColor: "rgba(230,237,243,0.25)", pointRadius: 0, borderWidth: 0 },
+          { label: "실측", data: data.series.map((r) => r.y), borderColor: "#2d72d2", pointRadius: 0, borderWidth: 1.5, spanGaps: true },
+          { label: "y_hat", data: data.series.map((r) => r.yhat), borderColor: "#1c2127", pointRadius: 0, borderWidth: 1.5 },
+          { label: "신뢰구간 상한", data: data.series.map((r) => r.yhat_upper), borderColor: "rgba(45,114,210,0.15)", pointRadius: 0, borderWidth: 0, fill: "+1" },
+          { label: "신뢰구간 하한", data: data.series.map((r) => r.yhat_lower), borderColor: "rgba(45,114,210,0.15)", pointRadius: 0, borderWidth: 0 },
         ],
       },
       options: {
         interaction: { mode: "index", intersect: false },
-        plugins: { legend: { labels: { color: "#9fb0c0" } } },
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: "#1c2127" } } },
         scales: {
-          x: { ticks: { color: "#9fb0c0", maxTicksLimit: 12 }, grid: { color: "#2a3a4a" } },
-          y: { ticks: { color: "#9fb0c0" }, grid: { color: "#2a3a4a" } },
+          x: { ticks: { color: "#5f6b7c", maxTicksLimit: 12 }, grid: { color: "#e3e7ed" } },
+          y: { ticks: { color: "#5f6b7c" }, grid: { color: "#e3e7ed" } },
         },
       },
       plugins: [{
@@ -255,6 +243,7 @@ let prophetChart, shapChart;
         },
       }],
     });
+    requestAnimationFrame(() => requestAnimationFrame(() => prophetChart && prophetChart.resize()));
   }
 
   load();

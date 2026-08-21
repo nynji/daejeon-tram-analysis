@@ -1,11 +1,15 @@
 <!doctype html>
-<html lang="ko">
+<html lang="ko" data-theme="dark">
 <head>
 <meta charset="utf-8" />
 <title>2-1. 실시간 병목 경보 지도</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="stylesheet" href="../assets/css/common.css" />
+<style>
+#map-2-1 { height: 400px; }
+#alert-timeline { max-height: 400px; overflow-y: auto; }
+</style>
 </head>
 <body>
 <div class="app-shell">
@@ -14,7 +18,6 @@
     <div class="page-header">
       <div>
         <h1>🚨 실시간 병목 경보 지도</h1>
-        <div class="subtitle">관제 요원 기본 랜딩 화면 · 구간별 정상/주의/심각 상태를 즉시 인지·대응</div>
       </div>
       <div id="as-of-label" class="subtitle"></div>
     </div>
@@ -25,11 +28,12 @@
       <div>
         <div class="panel">
           <div id="map-2-1" class="map-container"></div>
-          <div style="margin-top:14px;" class="slider-row">
+          <div style="margin-top:10px;" class="slider-row">
             <span class="subtitle" style="white-space:nowrap;">시간 이동</span>
             <input type="range" id="time-slider" min="0" value="0" />
             <span class="slider-time" id="slider-time-label"></span>
           </div>
+          <div id="segment-detail" class="segment-detail" style="display:none;"></div>
         </div>
       </div>
 
@@ -71,42 +75,37 @@ const FEATURE_LABEL = {
   let snapshotByKey = Object.fromEntries(snapshot.segments.map((s) => [s.segment_key, s]));
 
   const map = AppMap.initMap("map-2-1", { zoom: 12 });
-  let layers = AppMap.drawSegments(map, segCatalog.segments, snapshotByKey, showPopup);
+  let layers = AppMap.drawSegments(map, segCatalog.segments, snapshotByKey, showDetail);
   AppMap.zoomToSevere(map, layers); // REQ-2-1-2: 적색 구간 자동 확대
 
-  renderTimelinePanel(snapshot);
+  renderTimelinePanel(snapshot.segments);
   setupSlider(timeline, segCatalog);
 
-  function showPopup(seg, worst) {
-    if (!worst) return;
-    const shapLines = worst.shap_top
-      .slice(0, 3)
-      .map((s) => `${FEATURE_LABEL[s.feature] || s.feature} (${s.value > 0 ? "+" : ""}${s.value})`)
-      .join(", ");
+  function showDetail(seg, worst) {
+    const detail = document.getElementById("segment-detail");
+    if (!worst) { detail.style.display = "none"; return; }
+    const shapLines = worst.shap_top && worst.shap_top.length
+      ? worst.shap_top.slice(0, 3).map((s) => `${FEATURE_LABEL[s.feature] || s.feature} (${s.value > 0 ? "+" : ""}${s.value})`).join(", ")
+      : "-";
     const spillover = worst.betweenness_during > 0.01 ? "간선 연결성이 높아 인접 구간 파급 우려 높음" : "제한적 파급 예상";
-    const latlng = firstLatLng(seg);
-    L.popup()
-      .setLatLng(latlng)
-      .setContent(`
-        <div class="popup-title">${seg.from_station_name} ↔ ${seg.to_station_name}</div>
-        <div class="popup-row">${worst.risk_grade} · 현재 속도 ${worst.V_segment}km/h · 30분후 예측 ${worst.y_hat_t30 ?? "-"}km/h</div>
-        <div class="popup-row">기인 요인: ${shapLines}</div>
-        <div class="popup-row">파급 예상 범위: ${spillover}</div>
-        <div class="popup-row"><a href="../analysis/1-1.html?seg=${encodeURIComponent(Object.values(seg.directions)[0])}">상세 분석 보기(1-1) →</a></div>
-      `)
-      .openOn(map);
+    detail.style.display = "block";
+    detail.innerHTML = `
+      <div class="sd-title">${seg.from_station_name} ↔ ${seg.to_station_name}</div>
+      <table class="sd-table">
+        <tr><th>위험 등급</th><td>${worst.risk_grade}</td></tr>
+        <tr><th>현재 속도</th><td>${worst.V_segment}km/h</td></tr>
+        <tr><th>30분후 예측 속도</th><td>${worst.y_hat_t30 ?? "-"}km/h</td></tr>
+        <tr><th>기인 요인</th><td>${shapLines}</td></tr>
+        <tr><th>파급 예상 범위</th><td>${spillover}</td></tr>
+      </table>
+      <div class="sd-link"><a href="../analysis/1-1.html?seg=${encodeURIComponent(Object.values(seg.directions)[0])}">상세 분석 보기(1-1) →</a></div>
+    `;
+    detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
-  function firstLatLng(seg) {
-    const line = seg.geometry.coordinates[0];
-    if (!line || !line.length) return map.getCenter();
-    const mid = line[Math.floor(line.length / 2)];
-    return [mid[1], mid[0]];
-  }
-
-  function renderTimelinePanel(snapshot) {
+  function renderTimelinePanel(segments) {
     const rank = { "심각": 2, "주의": 1, "정상": 0 };
-    const sorted = [...snapshot.segments].sort((a, b) => rank[b.predicted_class] - rank[a.predicted_class]).filter(s => s.predicted_class !== "정상").slice(0, 25);
+    const sorted = [...segments].sort((a, b) => rank[b.predicted_class] - rank[a.predicted_class]).filter(s => s.predicted_class !== "정상").slice(0, 25);
     const html = sorted.map((s) => `
       <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--border);">
         <div>
@@ -129,11 +128,17 @@ const FEATURE_LABEL = {
       const frame = timeline.frames[+slider.value];
       updateLabel();
       const frameSnapByKey = {};
+      const frameSegments = [];
       Object.entries(frame.segments).forEach(([key, v]) => {
-        frameSnapByKey[key] = { predicted_class: v.predicted_class, V_segment: v.V_segment, shap_top: [], y_hat_t30: null, betweenness_during: 0, risk_grade: v.predicted_class === "심각" ? "🔴 심각" : v.predicted_class === "주의" ? "🟡 주의" : "🟢 정상" };
+        const risk_grade = v.predicted_class === "심각" ? "🔴 심각" : v.predicted_class === "주의" ? "🟡 주의" : "🟢 정상";
+        const row = { segment_key: key, predicted_class: v.predicted_class, V_segment: v.V_segment, shap_top: [], y_hat_t30: null, betweenness_during: 0, risk_grade };
+        frameSnapByKey[key] = row;
+        frameSegments.push(row);
       });
       Object.values(layers).forEach((l) => map.removeLayer(l.layer));
-      layers = AppMap.drawSegments(map, segCatalog.segments, frameSnapByKey, showPopup);
+      layers = AppMap.drawSegments(map, segCatalog.segments, frameSnapByKey, showDetail);
+      renderTimelinePanel(frameSegments);
+      document.getElementById("segment-detail").style.display = "none";
     });
 
     function updateLabel() {

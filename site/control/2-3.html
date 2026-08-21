@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko">
+<html lang="ko" data-theme="dark">
 <head>
 <meta charset="utf-8" />
 <title>2-3. AMR 거점 배치 관제 (TD-CMCLP)</title>
@@ -7,12 +7,16 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="stylesheet" href="../assets/css/common.css" />
 <style>
-.layout-mclp { display: grid; grid-template-columns: 360px minmax(0,1fr); gap: 18px; align-items: start; }
-.sidebar-controls { display: flex; flex-direction: column; overflow-y: auto; max-height: calc(100vh - 120px); }
-.ctrl-section { border-bottom: 1px solid var(--border); padding: 14px 0; }
+.layout-mclp { display: grid; grid-template-columns: 340px minmax(0,1fr); gap: 14px; align-items: stretch; }
+.sidebar-controls { display: flex; flex-direction: column; }
+.mclp-right-col { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.mclp-right-col > .panel { margin-bottom: 0; }
+.mclp-right-col > .panel:last-child { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.mclp-right-col > .panel:last-child > .map-container { flex: 1 1 auto; min-height: 0; }
+.ctrl-section { border-bottom: 1px solid var(--border); padding: 9px 0; }
 .ctrl-section:first-child { padding-top: 0; }
-.section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-dim); margin-bottom: 10px; }
-.ctrl-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 12.5px; }
+.section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-dim); margin-bottom: 7px; }
+.ctrl-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 12.5px; }
 .ctrl-row .lbl { color: var(--text-dim); flex-shrink: 0; }
 .ctrl-row .val { font-weight: 600; min-width: 42px; text-align: right; color: var(--text); }
 .ctrl-row input[type=range] { flex: 1; max-width: 110px; margin: 0 8px; accent-color: var(--accent); }
@@ -41,7 +45,8 @@
 .service-msg.pass { color: var(--normal); }
 .service-msg.fail { color: var(--severe); }
 .error-box { background: var(--severe-bg); border: 1px solid var(--severe); border-radius: 8px; padding: 10px; font-size: 12px; color: var(--severe); margin-top: 10px; }
-.anchor-list { list-style: none; padding: 0; max-height: 300px; overflow-y: auto; }
+.result-cols { display: grid; grid-template-columns: 1fr 1.4fr; gap: 20px; }
+.anchor-list { list-style: none; padding: 0; max-height: 220px; overflow-y: auto; }
 .anchor-item { display: flex; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
 .anchor-item:hover { background: var(--panel-2); margin: 0 -8px; padding: 7px 8px; border-radius: 6px; }
 .anchor-item:last-child { border-bottom: none; }
@@ -50,7 +55,7 @@
 .anchor-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .anchor-meta { font-size: 10.5px; color: var(--text-dim); margin-top: 1px; }
 .map-wrap { position: relative; }
-.map-container { height: 620px; }
+.map-container { height: 420px; }
 .status-badge { position: absolute; top: 12px; right: 12px; z-index: 999; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; font-size: 12px; display: flex; align-items: center; gap: 6px; }
 .sdot { width: 8px; height: 8px; border-radius: 50%; background: var(--normal); }
 .sdot.loading { background: var(--warning); animation: pulse 1s infinite; }
@@ -68,7 +73,6 @@
     <div class="page-header">
       <div>
         <h1>🤖 AMR 거점 배치 관제 (TD-CMCLP)</h1>
-        <div class="subtitle">위험조정 배정형 MCLP · A 정본 7개 CSV · 실시간 솔버 연동</div>
       </div>
     </div>
 
@@ -113,28 +117,9 @@
         </div>
 
         <button class="btn-run" id="btn-run">최적화 실행</button>
-        <p class="fine">백엔드 미연결 시 사전 계산 시나리오(42개)에서 매칭합니다.</p>
-
-        <!-- Results -->
-        <div id="result-area" style="display:none;">
-          <div class="ctrl-section">
-            <div class="section-title">결과</div>
-            <div class="kpi-grid-2x2" id="kpi-area"></div>
-            <div class="service-msg" id="svc-msg"></div>
-          </div>
-          <div class="ctrl-section">
-            <div class="section-title">자치구 단순 커버율</div>
-            <div class="district-grid" id="dist-grid"></div>
-          </div>
-          <div class="ctrl-section">
-            <div class="section-title">선정 거점 (<span id="anc-cnt">0</span>)</div>
-            <ul class="anchor-list" id="anc-list"></ul>
-          </div>
-        </div>
-        <div id="error-area"></div>
       </div>
-      <!-- Right: Map -->
-      <div>
+      <!-- Right: Map + Results -->
+      <div class="mclp-right-col">
         <div class="panel map-wrap">
           <div class="status-badge"><span class="sdot" id="s-dot"></span><span id="s-label">준비 중</span></div>
           <div id="map-mclp" class="map-container"></div>
@@ -147,17 +132,21 @@
           </div>
         </div>
 
-        <div class="panel" style="margin-top:14px;">
-          <h2>모델 개요</h2>
-          <p style="font-size:12px; color:var(--text-dim); line-height:1.8;">
-            <b>목적함수:</b> Σ<sub>i,j</sub> w<sub>i</sub> · (1 − β · risk<sub>ij</sub>) · y<sub>ij</sub><br>
-            <b>수요 가중치:</b> XGBoost 병목확률 × DTW 클러스터 보정 × 급속정체 보정<br>
-            <b>경로:</b> OSM 보행망 실측 거리 + 위험도 (coverage_matrix.csv)<br>
-            <b>서비스 수준:</b> 전체 UCR ≥ min_total, 자치구별 UCR ≥ min_district<br>
-            <b>후보지:</b> model_review_candidate=1 (562개→205개)<br>
-            <b>수요:</b> screening_pass=1 (1,364개)<br>
-            <b>솔버:</b> PuLP/CBC · rel. gap 1% · timeout 60s
-          </p>
+        <div class="panel" id="result-area">
+          <h2>결과</h2>
+          <div class="kpi-grid-2x2" id="kpi-area"></div>
+          <div class="service-msg" id="svc-msg"></div>
+          <div class="result-cols">
+            <div>
+              <div class="section-title" style="margin-top:14px;">자치구 단순 커버율</div>
+              <div class="district-grid" id="dist-grid"></div>
+            </div>
+            <div>
+              <div class="section-title" style="margin-top:14px;">선정 거점 (<span id="anc-cnt">0</span>)</div>
+              <ul class="anchor-list" id="anc-list"></ul>
+            </div>
+          </div>
+          <div id="error-area"></div>
         </div>
       </div>
     </div>
@@ -237,7 +226,12 @@
         label.textContent = "해당 조합 결과 없음";
         document.getElementById("error-area").innerHTML =
           `<div class="error-box">백엔드 미연결 & 사전 계산 시나리오에 해당 조합 없음.<br>P=${params.p}, R=${params.radius_m}m, β=${params.beta}, ${params.weight_variant}</div>`;
-        document.getElementById("result-area").style.display = "none";
+        document.getElementById("kpi-area").innerHTML = "";
+        document.getElementById("svc-msg").textContent = "";
+        document.getElementById("dist-grid").innerHTML = "";
+        document.getElementById("anc-list").innerHTML = "";
+        document.getElementById("anc-cnt").textContent = "0";
+        clearMapLayers();
       }
     }
     btn.disabled = false;
@@ -266,7 +260,6 @@
     if (s.status !== "Optimal") {
       dot.className = "sdot err";
       label.textContent = `${s.status}: Infeasible`;
-      document.getElementById("result-area").style.display = "block";
       renderKPI(s);
       clearMapLayers();
       return;
@@ -274,7 +267,6 @@
 
     dot.className = "sdot";
     label.textContent = `${s.status} · 사전계산 · ${s.scenario_name}`;
-    document.getElementById("result-area").style.display = "block";
     renderKPI(s);
     renderDistrict(s.district_coverage);
 
@@ -292,7 +284,6 @@
     if (r.status !== "Optimal") {
       dot.className = "sdot err";
       label.textContent = `${r.status}: ${r.message}`;
-      document.getElementById("result-area").style.display = "block";
       document.getElementById("kpi-area").innerHTML = `
         <div class="kpi-mini"><div class="kl">가중 커버율</div><div class="kv fail">0.0%</div></div>
         <div class="kpi-mini"><div class="kl">단순 커버율</div><div class="kv fail">0.0%</div></div>
@@ -306,7 +297,6 @@
 
     dot.className = "sdot";
     label.textContent = `${r.status} · 실시간 · ${r.solve_time_ms.toFixed(0)}ms`;
-    document.getElementById("result-area").style.display = "block";
 
     const wCls = r.weighted_coverage_ratio >= 0.8 ? "ok" : "warn";
     const uCls = r.unweighted_coverage_ratio >= 0.8 ? "ok" : "warn";

@@ -17,18 +17,12 @@
       </div>
     </div>
 
-    <div class="notice-banner" id="static-notice"></div>
-
     <div class="layout-2col">
       <div>
         <div class="panel">
           <h2>매개중심성(C_B) 히트맵</h2>
           <div id="map-1-2" class="map-container"></div>
-        </div>
-
-        <div class="panel">
-          <h2>원촌육교 사례 검증 패널 (2026.4)</h2>
-          <div id="wonchon-panel"></div>
+          <div id="segment-detail" class="segment-detail" style="display:none;"></div>
         </div>
       </div>
 
@@ -61,12 +55,6 @@ function colorScale(v) {
   AppNav.renderNav("1-2", "..");
 
   const betweenness = await fetch("../data/betweenness.json").then((r) => r.json());
-  document.getElementById("static-notice").textContent = betweenness.calc_basis_note;
-
-  const wonchon = betweenness.wonchon_case_study;
-  document.getElementById("wonchon-panel").innerHTML = wonchon.available
-    ? ""
-    : `<div class="empty-state"><div class="icon">🚧</div>${wonchon.note}</div>`;
 
   const map = AppMap.initMap("map-1-2", { zoom: 12 });
   const maxScore = Math.max(...betweenness.corridors.map((c) => c.bc_score_mean));
@@ -77,13 +65,18 @@ function colorScale(v) {
     const norm = maxScore > 0 ? c.bc_score_mean / maxScore : 0;
     const layer = L.polyline(latlngs, { color: colorScale(norm), weight: 3.5, opacity: 0.85 }).addTo(map);
     layer.on("click", () => {
-      const mid = latlngs[0][Math.floor(latlngs[0].length / 2)] || latlngs[0][0];
-      L.popup().setLatLng(mid).setContent(`
-        <div class="popup-title">${c.segment_name}</div>
-        <div class="popup-row">평균 C_B: ${c.bc_score_mean.toFixed(4)}</div>
-        <div class="popup-row">우선순위 점수: ${c.priority_score ?? "-"} · ${c.risk_grade ?? ""}</div>
-        <div class="popup-row">순위: ${c.rank ?? "-"}위 / 97개 코리도</div>
-      `).openOn(map);
+      const detail = document.getElementById("segment-detail");
+      detail.style.display = "block";
+      detail.innerHTML = `
+        <div class="sd-title">${c.segment_name}</div>
+        <table class="sd-table">
+          <tr><th>평균 C_B</th><td>${c.bc_score_mean.toFixed(4)}</td></tr>
+          <tr><th>우선순위 점수</th><td>${c.priority_score ?? "-"}</td></tr>
+          <tr><th>등급</th><td>${c.risk_grade ?? "-"}</td></tr>
+          <tr><th>순위</th><td>${c.rank ?? "-"}위 / 97개 코리도</td></tr>
+        </table>
+      `;
+      detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
   });
 
