@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>Home — 트램 공사 통합 관제</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="assets/css/common.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-root"></div>
+  <div class="main">
+    <div class="page-header">
+      <div>
+        <h1>통합 관제 대시보드 — Home</h1>
+      </div>
+      <div id="as-of-label" class="subtitle"></div>
+    </div>
+
+    <div class="card-grid">
+      <div class="kpi-card">
+        <div class="label">현재 심각 구간 수</div>
+        <div class="value severe" id="kpi-severe">-</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">현재 주의 구간 수</div>
+        <div class="value warning" id="kpi-warning">-</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">AMR 거점 배치 (TD-CMCLP)</div>
+        <div class="value" id="kpi-amr">-</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">오늘 예상 최고 혼잡 시간대</div>
+        <div class="value" id="kpi-peak">-</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>공구별 위험도 요약 지도</h2>
+      <div id="home-map" class="map-container"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="assets/js/nav.js"></script>
+<script src="assets/js/map.js"></script>
+<script>
+(async function () {
+  AppNav.applyLandingRedirect(".");
+  AppNav.renderNav("home", ".");
+
+  const [segCatalog, snapshot, tools, timeline, mclp] = await Promise.all([
+    fetch("data/segments.json").then((r) => r.json()),
+    fetch("data/snapshot_latest.json").then((r) => r.json()),
+    fetch("data/tools.json").then((r) => r.json()),
+    fetch("data/timeline_frames.json").then((r) => r.json()),
+    fetch("data/mclp_results.json").then((r) => r.json()),
+  ]);
+
+  document.getElementById("as-of-label").textContent = `기준 시각: ${snapshot.generated_from_timestamp} (시뮬레이션)`;
+  document.getElementById("kpi-severe").textContent = tools.kpi.severe_segment_count;
+  document.getElementById("kpi-warning").textContent = tools.kpi.warning_segment_count;
+
+  const amrDefault = mclp.scenarios.find((s) =>
+    s.stage === "SENSITIVITY" && s.p === 15 && s.radius_m === 2500 &&
+    Math.abs(s.beta - 0.1) < 0.001 && s.weight_variant === "BASE" && s.enforce_service_levels === true
+  );
+  const amrCard = document.getElementById("kpi-amr");
+  amrCard.textContent = amrDefault ? `${amrDefault.selected_count}개소` : "-";
+  amrCard.style.cursor = "pointer";
+  amrCard.addEventListener("click", () => { window.location.href = "control/2-3.html"; });
+
+  let worstFrame = timeline.frames[0], worstCount = -1;
+  timeline.frames.forEach((f) => {
+    const count = Object.values(f.segments).filter((s) => s.predicted_class === "심각").length;
+    if (count > worstCount) { worstCount = count; worstFrame = f; }
+  });
+  const peakTime = worstFrame.timestamp.slice(11, 16);
+  const [ph, pm] = peakTime.split(":").map(Number);
+  const endMin = pm + timeline.step_minutes;
+  const peakEnd = `${String(ph + Math.floor(endMin / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
+  document.getElementById("kpi-peak").textContent = `${peakTime}–${peakEnd}`;
+
+  const snapshotByKey = Object.fromEntries(snapshot.segments.map((s) => [s.segment_key, s]));
+  const toolByNo = Object.fromEntries(tools.tools.map((t) => [t.tool_no, t]));
+
+  const map = AppMap.initMap("home-map", { zoom: 12 });
+  const rank = { "🟢 정상": 0, "🟡 주의": 1, "🔴 심각": 2 };
+  const layers = AppMap.drawSegments(map, segCatalog.segments, snapshotByKey, (seg) => {
+    window.location.href = `control/2-1.html?tool=${seg.tool_no}`;
+  });
+})();
+</script>
+</body>
+</html>

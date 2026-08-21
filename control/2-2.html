@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<title>2-2. 우회 경로 추천</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="../assets/css/common.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-root"></div>
+  <div class="main">
+    <div class="page-header">
+      <div>
+        <h1>2-2. 우회 경로 추천</h1>
+      </div>
+      <div class="subtitle" id="as-of-label"></div>
+    </div>
+
+    <div class="layout-2col">
+      <div>
+        <div class="panel">
+          <div id="map-2-2" class="map-container"></div>
+          <div class="legend-row" style="display:flex; gap:16px; margin-top:10px; font-size:11.5px; color:var(--text-dim);">
+            <span><span style="display:inline-block;width:16px;height:3px;background:var(--text-dim);border-radius:2px;margin-right:5px;vertical-align:middle;border-top:2px dashed var(--text-dim);background:none;"></span>정적 경로(위험도 미반영)</span>
+            <span><span style="display:inline-block;width:16px;height:3px;background:var(--accent);border-radius:2px;margin-right:5px;vertical-align:middle;"></span>추천 경로(위험도 반영)</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel">
+          <h2>출발지 / 목적지</h2>
+          <div class="form-grid">
+            <div class="form-field">
+              <label>출발지</label>
+              <select id="origin-select" class="control-select"></select>
+            </div>
+            <div class="form-field">
+              <label>목적지</label>
+              <select id="destination-select" class="control-select"></select>
+            </div>
+          </div>
+          <div style="margin-top:12px;">
+            <button class="btn" id="btn-swap">⇄ 출발/목적지 바꾸기</button>
+          </div>
+        </div>
+
+        <div class="panel" id="result-panel">
+          <h2>경로 비교</h2>
+          <div id="result-body"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="../assets/js/nav.js"></script>
+<script src="../assets/js/map.js"></script>
+<script>
+(async function () {
+  AppNav.renderNav("2-2", "..");
+
+  const data = await fetch("../data/routing_precomputed.json").then((r) => r.json());
+
+  document.getElementById("as-of-label").textContent = `위험도 기준 시각: ${data.based_on_snapshot} (시뮬레이션)`;
+
+  const stationSet = new Map();
+  data.scenarios.forEach((s) => {
+    stationSet.set(s.origin_station_no, s.origin_name);
+    stationSet.set(s.destination_station_no, s.destination_name);
+  });
+  const stations = [...stationSet.entries()].sort((a, b) => a[0] - b[0]);
+
+  const originSelect = document.getElementById("origin-select");
+  const destSelect = document.getElementById("destination-select");
+  stations.forEach(([no, name]) => {
+    originSelect.appendChild(new Option(name, no));
+    destSelect.appendChild(new Option(name, no));
+  });
+  originSelect.value = stations[0][0];
+  destSelect.value = stations[1][0];
+
+  const map = AppMap.initMap("map-2-2", { zoom: 12 });
+  let staticLayer = null, predictedLayer = null;
+
+  function findScenario(originNo, destNo) {
+    return data.scenarios.find((s) =>
+      (s.origin_station_no == originNo && s.destination_station_no == destNo) ||
+      (s.origin_station_no == destNo && s.destination_station_no == originNo)
+    );
+  }
+
+  function render() {
+    const originNo = +originSelect.value;
+    const destNo = +destSelect.value;
+    if (staticLayer) { map.removeLayer(staticLayer); staticLayer = null; }
+    if (predictedLayer) { map.removeLayer(predictedLayer); predictedLayer = null; }
+
+    if (originNo === destNo) {
+      document.getElementById("result-body").innerHTML = `<div class="empty-state">출발지와 목적지가 같습니다.</div>`;
+      return;
+    }
+
+    const s = findScenario(originNo, destNo);
+    if (!s) {
+      document.getElementById("result-body").innerHTML = `<div class="empty-state">이 조합은 사전계산 시나리오에 없습니다. 다른 조합을 선택해주세요.</div>`;
+      return;
+    }
+
+    let staticPath = s.static_path_latlng;
+    let predictedPath = s.predicted_path_latlng;
+    // 시나리오는 station 번호 오름차순 1방향으로만 저장돼 있음 — 반대로 조회했으면 경로를 뒤집어 보여준다
+    if (s.origin_station_no !== originNo) {
+      staticPath = [...staticPath].reverse();
+      predictedPath = [...predictedPath].reverse();
+    }
+
+    staticLayer = L.polyline(staticPath, { color: "#9fb0c0", weight: 3, opacity: 0.7, dashArray: "6 6" }).addTo(map);
+    predictedLayer = L.polyline(predictedPath, { color: "#2d72d2", weight: 4, opacity: 0.95 }).addTo(map);
+    map.fitBounds(L.featureGroup([staticLayer, predictedLayer]).getBounds().pad(0.15));
+
+    const sameBadge = s.same_path
+      ? `<span class="badge normal">동일 경로</span>`
+      : `<span class="badge warning">경로 변경됨</span>`;
+    const timeDelta = (s.predicted_time_min - s.static_time_min);
+    const riskDelta = (s.predicted_risk_exposure - s.static_risk_exposure);
+    document.getElementById("result-body").innerHTML = `
+      <div class="sd-title">${s.origin_name} → ${s.destination_name} ${sameBadge}</div>
+      <table class="sd-table">
+        <tr><th>정적 경로 이동시간</th><td>${s.static_time_min}분</td></tr>
+        <tr><th>정적 경로 위험노출량</th><td>${s.static_risk_exposure}</td></tr>
+        <tr><th>추천 경로 이동시간</th><td>${s.predicted_time_min}분 (${timeDelta >= 0 ? "+" : ""}${timeDelta.toFixed(1)}분)</td></tr>
+        <tr><th>추천 경로 위험노출량</th><td>${s.predicted_risk_exposure} (${riskDelta >= 0 ? "+" : ""}${riskDelta.toFixed(3)})</td></tr>
+        ${s.same_path ? "" : `
+        <tr><th>회피한 도로</th><td>${s.avoided_roads.join(", ") || "-"}</td></tr>
+        <tr><th>새로 지나는 도로</th><td>${s.new_roads.join(", ") || "-"}</td></tr>`}
+      </table>
+    `;
+  }
+
+  originSelect.addEventListener("change", render);
+  destSelect.addEventListener("change", render);
+  document.getElementById("btn-swap").addEventListener("click", () => {
+    const tmp = originSelect.value;
+    originSelect.value = destSelect.value;
+    destSelect.value = tmp;
+    render();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

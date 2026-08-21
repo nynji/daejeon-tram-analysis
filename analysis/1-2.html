@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>1-2. 네트워크 구조 분석</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="../assets/css/common.css" />
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-root"></div>
+  <div class="main">
+    <div class="page-header">
+      <div>
+        <h1>1-2. 네트워크 구조 분석 (매개중심성)</h1>
+      </div>
+    </div>
+
+    <div class="layout-2col">
+      <div>
+        <div class="panel">
+          <h2>매개중심성(C_B) 히트맵</h2>
+          <div id="map-1-2" class="map-container"></div>
+          <div id="segment-detail" class="segment-detail" style="display:none;"></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel">
+          <h2>상위 매개중심성 구간 (Top 15)</h2>
+          <table class="data-table">
+            <thead><tr><th>순위</th><th>구간</th><th>우선순위 점수</th><th>등급</th></tr></thead>
+            <tbody id="top-n-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="../assets/js/nav.js"></script>
+<script src="../assets/js/map.js"></script>
+<script>
+function colorScale(v) {
+  // 0(파랑)->1(빨강) 그라데이션
+  const t = Math.max(0, Math.min(1, v));
+  const r = Math.round(255 * t);
+  const b = Math.round(255 * (1 - t));
+  return `rgb(${r},70,${b})`;
+}
+
+(async function () {
+  AppNav.renderNav("1-2", "..");
+
+  const betweenness = await fetch("../data/betweenness.json").then((r) => r.json());
+
+  const map = AppMap.initMap("map-1-2", { zoom: 12 });
+  const maxScore = Math.max(...betweenness.corridors.map((c) => c.bc_score_mean));
+
+  betweenness.corridors.forEach((c) => {
+    if (!c.geometry.coordinates.length) return;
+    const latlngs = c.geometry.coordinates.map((line) => line.map(([lng, lat]) => [lat, lng]));
+    const norm = maxScore > 0 ? c.bc_score_mean / maxScore : 0;
+    const layer = L.polyline(latlngs, { color: colorScale(norm), weight: 3.5, opacity: 0.85 }).addTo(map);
+    layer.on("click", () => {
+      const detail = document.getElementById("segment-detail");
+      detail.style.display = "block";
+      detail.innerHTML = `
+        <div class="sd-title">${c.segment_name}</div>
+        <table class="sd-table">
+          <tr><th>평균 C_B</th><td>${c.bc_score_mean.toFixed(4)}</td></tr>
+          <tr><th>우선순위 점수</th><td>${c.priority_score ?? "-"}</td></tr>
+          <tr><th>등급</th><td>${c.risk_grade ?? "-"}</td></tr>
+          <tr><th>순위</th><td>${c.rank ?? "-"}위 / 97개 코리도</td></tr>
+        </table>
+      `;
+      detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  });
+
+  const tbody = document.getElementById("top-n-body");
+  tbody.innerHTML = betweenness.top_n.map((r) => `
+    <tr>
+      <td>${r.rank}</td>
+      <td>${r.segment_name}</td>
+      <td>${r.priority_score}</td>
+      <td>${r.risk_grade}</td>
+    </tr>`).join("");
+})();
+</script>
+</body>
+</html>

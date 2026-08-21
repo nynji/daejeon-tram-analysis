@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<title>2-3. AMR 거점 배치 관제 (TD-CMCLP)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="../assets/css/common.css" />
+<style>
+.layout-mclp { display: grid; grid-template-columns: 340px minmax(0,1fr); gap: 14px; align-items: stretch; }
+.sidebar-controls { display: flex; flex-direction: column; }
+.mclp-right-col { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+.mclp-right-col > .panel { margin-bottom: 0; }
+.mclp-right-col > .panel:last-child { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.mclp-right-col > .panel:last-child > .map-container { flex: 1 1 auto; min-height: 0; }
+.ctrl-section { border-bottom: 1px solid var(--border); padding: 9px 0; }
+.ctrl-section:first-child { padding-top: 0; }
+.section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-dim); margin-bottom: 7px; }
+.ctrl-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 12.5px; }
+.ctrl-row .lbl { color: var(--text-dim); flex-shrink: 0; }
+.ctrl-row .val { font-weight: 600; min-width: 42px; text-align: right; color: var(--text); }
+.ctrl-row input[type=range] { flex: 1; max-width: 110px; margin: 0 8px; accent-color: var(--accent); }
+.ctrl-row select, .ctrl-row input[type=number] {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 8px; font-size: 12px; width: 110px;
+}
+.chk-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 12px; color: var(--text-dim); }
+.chk-row input { accent-color: var(--accent); }
+.fine { font-size: 10.5px; color: var(--text-dim); margin-top: 4px; line-height: 1.5; }
+.btn-run { width: 100%; padding: 10px; background: var(--accent); color: #fff; border: none; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 10px; }
+.btn-run:hover { background: #2563eb; }
+.btn-run:disabled { background: var(--panel-2); color: var(--text-dim); cursor: not-allowed; }
+</style>
+<style>
+.kpi-grid-2x2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.kpi-mini { background: var(--panel-2); border-radius: 8px; padding: 10px 12px; }
+.kpi-mini .kl { font-size: 10.5px; color: var(--text-dim); }
+.kpi-mini .kv { font-size: 18px; font-weight: 700; margin-top: 2px; }
+.kpi-mini .kv.ok { color: var(--normal); }
+.kpi-mini .kv.warn { color: var(--warning); }
+.kpi-mini .kv.fail { color: var(--severe); }
+.district-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 12px; color: var(--text-dim); }
+.district-grid b { color: var(--text); float: right; }
+.service-msg { font-size: 12px; margin-top: 8px; font-weight: 600; }
+.service-msg.pass { color: var(--normal); }
+.service-msg.fail { color: var(--severe); }
+.error-box { background: var(--severe-bg); border: 1px solid var(--severe); border-radius: 8px; padding: 10px; font-size: 12px; color: var(--severe); margin-top: 10px; }
+.result-cols { display: grid; grid-template-columns: 1fr 1.4fr; gap: 20px; }
+.anchor-list { list-style: none; padding: 0; max-height: 220px; overflow-y: auto; }
+.anchor-item { display: flex; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+.anchor-item:hover { background: var(--panel-2); margin: 0 -8px; padding: 7px 8px; border-radius: 6px; }
+.anchor-item:last-child { border-bottom: none; }
+.anchor-rank { width: 22px; height: 22px; border-radius: 50%; background: var(--severe); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; margin-right: 8px; flex-shrink: 0; }
+.anchor-info { flex: 1; min-width: 0; }
+.anchor-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.anchor-meta { font-size: 10.5px; color: var(--text-dim); margin-top: 1px; }
+.map-wrap { position: relative; }
+.map-container { height: 420px; }
+.status-badge { position: absolute; top: 12px; right: 12px; z-index: 999; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+.sdot { width: 8px; height: 8px; border-radius: 50%; background: var(--normal); }
+.sdot.loading { background: var(--warning); animation: pulse 1s infinite; }
+.sdot.err { background: var(--severe); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+.leaflet-numbered-icon { width: 26px; height: 26px; border-radius: 50%; background: #e74c3c; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.4); }
+.legend-bar { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: 11.5px; color: var(--text-dim); align-items: center; }
+.legend-bar .ldot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 4px; vertical-align: middle; }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <div id="sidebar-root"></div>
+  <div class="main">
+    <div class="page-header">
+      <div>
+        <h1>🤖 AMR 거점 배치 관제 (TD-CMCLP)</h1>
+      </div>
+    </div>
+
+    <div class="layout-mclp">
+      <!-- Left: Controls Panel -->
+      <div class="panel sidebar-controls">
+        <div class="ctrl-section">
+          <div class="section-title">모델 입력</div>
+          <div class="ctrl-row"><span class="lbl">최대 거점 수 P</span><input type="range" id="c-p" min="1" max="20" value="15"><span class="val" id="v-p">15</span></div>
+          <div class="ctrl-row"><span class="lbl">보행망 반경</span><select id="c-radius"><option value="2000">2,000m (기준 미달)</option><option value="2500" selected>2,500m</option><option value="3000">3,000m</option></select></div>
+          <div class="ctrl-row"><span class="lbl">경로위험 감점 β</span><select id="c-beta"><option value="0">0.00</option><option value="0.1" selected>0.10</option><option value="0.2">0.20</option></select></div>
+          <div class="ctrl-row"><span class="lbl">수요 가중치</span><select id="c-weight"><option value="CONSERVATIVE">보수</option><option value="BASE" selected>기준</option><option value="ENHANCED">강화</option></select></div>
+        </div>
+
+        <div class="ctrl-section">
+          <div class="section-title">운영 파라미터</div>
+          <div class="ctrl-row"><span class="lbl">총 로봇 수</span><input type="number" id="c-robots" value="45" min="1" max="100" style="width:70px"></div>
+          <div class="ctrl-row"><span class="lbl">거점당 최소 로봇</span><input type="number" id="c-min-robots" value="3" min="1" max="10" style="width:70px"></div>
+          <div class="ctrl-row"><span class="lbl">계획 슬롯(10분 단위)</span><input type="number" id="c-slots" value="48" min="1" max="144" style="width:70px"></div>
+          <div class="ctrl-row"><span class="lbl">로봇 속도 (m/s)</span><input type="number" id="c-speed" value="1.0" min="0.5" max="2.0" step="0.1" style="width:70px"></div>
+        </div>
+        <div class="ctrl-section">
+          <div class="section-title">서비스 수준 제약</div>
+          <div class="ctrl-row"><span class="lbl">전체 최소 커버율</span><input type="number" id="c-min-total" value="0.80" min="0" max="1" step="0.05" style="width:70px"></div>
+          <div class="ctrl-row"><span class="lbl">자치구별 최소 커버율</span><input type="number" id="c-min-district" value="0.50" min="0" max="1" step="0.05" style="width:70px"></div>
+          <div class="ctrl-row"><span class="lbl">심각 임계치</span><input type="number" id="c-severe" value="0.25" min="0" max="1" step="0.05" style="width:70px"></div>
+          <label class="chk-row"><input type="checkbox" id="c-enforce" checked>서비스 수준 제약 적용</label>
+        </div>
+
+        <div class="ctrl-section">
+          <div class="section-title">기상 중단 조건</div>
+          <div class="ctrl-row"><span class="lbl">강수 중단 (mm/h)</span><input type="number" id="c-rain" value="30" min="0" max="100" style="width:70px"></div>
+          <div class="ctrl-row"><span class="lbl">적설 중단 (cm)</span><input type="number" id="c-snow" value="3" min="0" max="30" style="width:70px"></div>
+          <div class="ctrl-row"><span class="lbl">결빙 중단 (℃)</span><input type="number" id="c-freeze" value="0" min="-10" max="5" style="width:70px"></div>
+        </div>
+
+        <div class="ctrl-section">
+          <div class="section-title">지도 표시 옵션</div>
+          <label class="chk-row"><input type="checkbox" id="c-routes" checked>수요–거점 연결선</label>
+          <label class="chk-row"><input type="checkbox" id="c-uncovered">미커버 수요 표시</label>
+          <label class="chk-row"><input type="checkbox" id="c-coverage" checked>커버리지 반경 원</label>
+        </div>
+
+        <button class="btn-run" id="btn-run">최적화 실행</button>
+      </div>
+      <!-- Right: Map + Results -->
+      <div class="mclp-right-col">
+        <div class="panel map-wrap">
+          <div class="status-badge"><span class="sdot" id="s-dot"></span><span id="s-label">준비 중</span></div>
+          <div id="map-mclp" class="map-container"></div>
+          <div class="legend-bar">
+            <span><span class="ldot" style="background:#e74c3c;"></span>선정 거점 (번호)</span>
+            <span><span class="ldot" style="background:rgba(231,76,60,0.12); border:1px solid #e74c3c;"></span>커버리지 반경</span>
+            <span><span class="ldot" style="background:#3b82f6;"></span>커버된 수요</span>
+            <span><span class="ldot" style="background:#9ca3af;"></span>미커버 수요</span>
+            <span><span class="ldot" style="background:#10b981; width:16px; height:3px; border-radius:2px;"></span>배정 연결선</span>
+          </div>
+        </div>
+
+        <div class="panel" id="result-area">
+          <h2>결과</h2>
+          <div class="kpi-grid-2x2" id="kpi-area"></div>
+          <div class="service-msg" id="svc-msg"></div>
+          <div class="result-cols">
+            <div>
+              <div class="section-title" style="margin-top:14px;">자치구 단순 커버율</div>
+              <div class="district-grid" id="dist-grid"></div>
+            </div>
+            <div>
+              <div class="section-title" style="margin-top:14px;">선정 거점 (<span id="anc-cnt">0</span>)</div>
+              <ul class="anchor-list" id="anc-list"></ul>
+            </div>
+          </div>
+          <div id="error-area"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="../assets/js/nav.js"></script>
+<script>
+(async function () {
+  AppNav.renderNav("2-3", "..");
+
+  // Load fallback data
+  const fallback = await fetch("../data/mclp_results.json").then(r => r.json());
+  const API_BASE = "http://localhost:8000"; // FastAPI backend
+
+  // Map init
+  const map = L.map("map-mclp", { zoomControl: true }).setView([36.35, 127.41], 12);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    attribution: '&copy; CARTO', maxZoom: 19
+  }).addTo(map);
+
+  let mapLayers = { anchors: [], circles: [], covered: null, uncovered: null, routes: null };
+
+  // Numbered icon factory
+  function numberedIcon(n) {
+    return L.divIcon({
+      className: '',
+      html: `<div class="leaflet-numbered-icon">${n}</div>`,
+      iconSize: [26, 26], iconAnchor: [13, 13]
+    });
+  }
+
+  // P slider
+  const cP = document.getElementById("c-p");
+  const vP = document.getElementById("v-p");
+  cP.addEventListener("input", () => { vP.textContent = cP.value; });
+
+  // Run button
+  document.getElementById("btn-run").addEventListener("click", runOptimize);
+
+  async function runOptimize() {
+    const btn = document.getElementById("btn-run");
+    const dot = document.getElementById("s-dot");
+    const label = document.getElementById("s-label");
+    btn.disabled = true;
+    btn.textContent = "최적화 중…";
+    dot.className = "sdot loading";
+    label.textContent = "계산 중";
+    document.getElementById("error-area").innerHTML = "";
+
+    const params = {
+      p: +cP.value,
+      radius_m: +document.getElementById("c-radius").value,
+      beta: +document.getElementById("c-beta").value,
+      weight_variant: document.getElementById("c-weight").value,
+      enforce_service_levels: document.getElementById("c-enforce").checked,
+    };
+
+    let result = null;
+    try {
+      // Try live backend first
+      const resp = await fetch(API_BASE + "/api/optimize", {
+        method: "POST", headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(params), signal: AbortSignal.timeout(65000)
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      result = await resp.json();
+      renderLiveResult(result);
+    } catch (e) {
+      // Fallback to pre-computed
+      result = findFallback(params);
+      if (result) {
+        renderFallbackResult(result, params);
+      } else {
+        dot.className = "sdot err";
+        label.textContent = "해당 조합 결과 없음";
+        document.getElementById("error-area").innerHTML =
+          `<div class="error-box">백엔드 미연결 & 사전 계산 시나리오에 해당 조합 없음.<br>P=${params.p}, R=${params.radius_m}m, β=${params.beta}, ${params.weight_variant}</div>`;
+        document.getElementById("kpi-area").innerHTML = "";
+        document.getElementById("svc-msg").textContent = "";
+        document.getElementById("dist-grid").innerHTML = "";
+        document.getElementById("anc-list").innerHTML = "";
+        document.getElementById("anc-cnt").textContent = "0";
+        clearMapLayers();
+      }
+    }
+    btn.disabled = false;
+    btn.textContent = "최적화 실행";
+  }
+  function findFallback(params) {
+    // Match sensitivity grid
+    let match = fallback.scenarios.find(s =>
+      s.p === params.p && s.radius_m === params.radius_m &&
+      Math.abs(s.beta - params.beta) < 0.001 &&
+      s.weight_variant === params.weight_variant &&
+      s.enforce_service_levels === params.enforce_service_levels &&
+      s.stage === "SENSITIVITY"
+    );
+    if (!match) {
+      // Try P_SEARCH (BASE, 2500m, beta=0.1, no service)
+      match = fallback.scenarios.find(s => s.p === params.p && s.stage === "P_SEARCH");
+    }
+    return match;
+  }
+
+  function renderFallbackResult(s, params) {
+    const dot = document.getElementById("s-dot");
+    const label = document.getElementById("s-label");
+
+    if (s.status !== "Optimal") {
+      dot.className = "sdot err";
+      label.textContent = `${s.status}: Infeasible`;
+      renderKPI(s);
+      clearMapLayers();
+      return;
+    }
+
+    dot.className = "sdot";
+    label.textContent = `${s.status} · 사전계산 · ${s.scenario_name}`;
+    renderKPI(s);
+    renderDistrict(s.district_coverage);
+
+    // Anchors
+    const anchors = fallback.anchors_by_scenario[s.scenario_id] || [];
+    const sorted = [...anchors].sort((a, b) => b.assigned_demand_count - a.assigned_demand_count);
+    renderAnchorList(sorted);
+    renderAnchorMap(sorted, params.radius_m);
+  }
+
+  function renderLiveResult(r) {
+    const dot = document.getElementById("s-dot");
+    const label = document.getElementById("s-label");
+
+    if (r.status !== "Optimal") {
+      dot.className = "sdot err";
+      label.textContent = `${r.status}: ${r.message}`;
+      document.getElementById("kpi-area").innerHTML = `
+        <div class="kpi-mini"><div class="kl">가중 커버율</div><div class="kv fail">0.0%</div></div>
+        <div class="kpi-mini"><div class="kl">단순 커버율</div><div class="kv fail">0.0%</div></div>
+        <div class="kpi-mini"><div class="kl">선택 거점</div><div class="kv">0</div></div>
+        <div class="kpi-mini"><div class="kl">계산 시간</div><div class="kv">-</div></div>`;
+      document.getElementById("svc-msg").className = "service-msg fail";
+      document.getElementById("svc-msg").textContent = r.message;
+      clearMapLayers();
+      return;
+    }
+
+    dot.className = "sdot";
+    label.textContent = `${r.status} · 실시간 · ${r.solve_time_ms.toFixed(0)}ms`;
+
+    const wCls = r.weighted_coverage_ratio >= 0.8 ? "ok" : "warn";
+    const uCls = r.unweighted_coverage_ratio >= 0.8 ? "ok" : "warn";
+    document.getElementById("kpi-area").innerHTML = `
+      <div class="kpi-mini"><div class="kl">가중 커버율</div><div class="kv ${wCls}">${(r.weighted_coverage_ratio*100).toFixed(1)}%</div></div>
+      <div class="kpi-mini"><div class="kl">단순 커버율</div><div class="kv ${uCls}">${(r.unweighted_coverage_ratio*100).toFixed(1)}%</div></div>
+      <div class="kpi-mini"><div class="kl">선택 거점</div><div class="kv">${r.p_selected}</div></div>
+      <div class="kpi-mini"><div class="kl">계산 시간</div><div class="kv">${r.solve_time_ms>=1000?(r.solve_time_ms/1000).toFixed(1)+'s':r.solve_time_ms.toFixed(0)+'ms'}</div></div>`;
+
+    const ssEl = document.getElementById("svc-msg");
+    ssEl.className = r.service_level_met ? "service-msg pass" : "service-msg fail";
+    ssEl.textContent = r.service_level_met ? "✓ 최소 서비스 수준 충족" : "✗ 최소 서비스 수준 미충족";
+
+    renderDistrict(r.district_coverage);
+
+    // Map: routes, covered, uncovered, anchors
+    clearMapLayers();
+    const showRoutes = document.getElementById("c-routes").checked;
+    const showUncov = document.getElementById("c-uncovered").checked;
+    const showCov = document.getElementById("c-coverage").checked;
+    const radius = +document.getElementById("c-radius").value;
+
+    if (showRoutes && r.assignment_links?.length) {
+      const lines = r.assignment_links.map(l => L.polyline(l.coordinates.map(c=>[c[1],c[0]]), {color:'#10b981',weight:1,opacity:0.3}));
+      mapLayers.routes = L.layerGroup(lines).addTo(map);
+    }
+    if (r.covered_demand_coords?.length) {
+      const pts = r.covered_demand_coords.map(c => L.circleMarker([c[1],c[0]], {radius:2.5,color:'#3b82f6',fillColor:'#3b82f6',fillOpacity:0.5,weight:0}));
+      mapLayers.covered = L.layerGroup(pts).addTo(map);
+    }
+    if (showUncov && r.uncovered_demand_coords?.length) {
+      const pts = r.uncovered_demand_coords.map(c => L.circleMarker([c[1],c[0]], {radius:2.5,color:'#9ca3af',fillColor:'#9ca3af',fillOpacity:0.4,weight:0}));
+      mapLayers.uncovered = L.layerGroup(pts).addTo(map);
+    }
+
+    const sorted = [...r.anchors].sort((a,b) => b.assigned_demand_count - a.assigned_demand_count);
+    renderAnchorList(sorted.map(a => ({...a, candidate_name: a.candidate_name, district_name: a.district_name, stability_category: a.model_review_status})));
+    sorted.forEach((a, idx) => {
+      if (showCov) {
+        const circle = L.circle([a.latitude, a.longitude], {radius, color:'#e74c3c', weight:1, fillColor:'#e74c3c', fillOpacity:0.05}).addTo(map);
+        mapLayers.circles.push(circle);
+      }
+      const marker = L.marker([a.latitude, a.longitude], {icon: numberedIcon(idx+1)}).addTo(map);
+      marker.bindPopup(`<div class="popup-title">#${idx+1} ${a.candidate_name}</div><div class="popup-row">${a.candidate_id} · ${a.district_name}</div><div class="popup-row">배정 수요: ${a.assigned_demand_count}개 · 평균 ${a.avg_route_distance_m.toFixed(0)}m</div><div class="popup-row">상태: ${a.model_review_status}</div>`);
+      mapLayers.anchors.push(marker);
+    });
+    if (mapLayers.anchors.length) map.fitBounds(L.featureGroup(mapLayers.anchors).getBounds().pad(0.15));
+  }
+  function renderKPI(s) {
+    const wCls = s.wcr >= 0.8 ? "ok" : (s.status==="Optimal" ? "warn" : "fail");
+    const uCls = s.ucr >= 0.8 ? "ok" : (s.status==="Optimal" ? "warn" : "fail");
+    document.getElementById("kpi-area").innerHTML = `
+      <div class="kpi-mini"><div class="kl">가중 커버율</div><div class="kv ${wCls}">${(s.wcr*100).toFixed(1)}%</div></div>
+      <div class="kpi-mini"><div class="kl">단순 커버율</div><div class="kv ${uCls}">${(s.ucr*100).toFixed(1)}%</div></div>
+      <div class="kpi-mini"><div class="kl">선택 거점</div><div class="kv">${s.selected_count}</div></div>
+      <div class="kpi-mini"><div class="kl">계산 시간</div><div class="kv">${s.solve_time_sec.toFixed(1)}s</div></div>`;
+    const ssEl = document.getElementById("svc-msg");
+    if (s.status !== "Optimal") {
+      ssEl.className = "service-msg fail";
+      ssEl.textContent = "✗ 실행 불가 (Infeasible)";
+    } else {
+      ssEl.className = s.service_level_met ? "service-msg pass" : "service-msg fail";
+      ssEl.textContent = s.service_level_met ? "✓ 최소 서비스 수준 충족" : "✗ 최소 서비스 수준 미충족";
+    }
+  }
+
+  function renderDistrict(dc) {
+    document.getElementById("dist-grid").innerHTML = Object.entries(dc).map(([k,v]) =>
+      `<span>${k} <b style="color:${v>=0.5?'var(--normal)':'var(--severe)'}">${(v*100).toFixed(1)}%</b></span>`
+    ).join("");
+  }
+
+  function renderAnchorList(sorted) {
+    document.getElementById("anc-cnt").textContent = sorted.length;
+    const listEl = document.getElementById("anc-list");
+    listEl.innerHTML = sorted.map((a, i) => `
+      <li class="anchor-item" data-idx="${i}">
+        <span class="anchor-rank">${i+1}</span>
+        <div class="anchor-info">
+          <div class="anchor-name">${a.candidate_name}</div>
+          <div class="anchor-meta">${a.candidate_id||''} · ${a.district_name} · ${a.assigned_demand_count}개 수요 · ${a.stability_category||''}</div>
+        </div>
+      </li>`).join("");
+    listEl.onclick = (e) => {
+      const item = e.target.closest(".anchor-item");
+      if (!item) return;
+      const idx = +item.dataset.idx;
+      if (mapLayers.anchors[idx]) {
+        const ll = mapLayers.anchors[idx].getLatLng();
+        map.setView(ll, 14);
+        mapLayers.anchors[idx].openPopup();
+      }
+    };
+  }
+
+  function renderAnchorMap(sorted, radiusM) {
+    clearMapLayers();
+    const showCov = document.getElementById("c-coverage").checked;
+    sorted.forEach((a, idx) => {
+      if (!a.lat || !a.lng) return;
+      if (showCov) {
+        const circle = L.circle([a.lat, a.lng], {radius: radiusM, color:'#e74c3c', weight:1, fillColor:'#e74c3c', fillOpacity:0.05}).addTo(map);
+        mapLayers.circles.push(circle);
+      }
+      const marker = L.marker([a.lat, a.lng], {icon: numberedIcon(idx+1)}).addTo(map);
+      marker.bindPopup(`<div class="popup-title">#${idx+1} ${a.candidate_name}</div><div class="popup-row">${a.candidate_id} · ${a.district_name}</div><div class="popup-row">배정 수요: ${a.assigned_demand_count}개</div><div class="popup-row">안정성: ${a.stability_category}</div>`);
+      mapLayers.anchors.push(marker);
+    });
+    if (mapLayers.anchors.length) map.fitBounds(L.featureGroup(mapLayers.anchors).getBounds().pad(0.15));
+  }
+
+  function clearMapLayers() {
+    mapLayers.anchors.forEach(l => map.removeLayer(l));
+    mapLayers.circles.forEach(l => map.removeLayer(l));
+    if (mapLayers.covered) { map.removeLayer(mapLayers.covered); mapLayers.covered = null; }
+    if (mapLayers.uncovered) { map.removeLayer(mapLayers.uncovered); mapLayers.uncovered = null; }
+    if (mapLayers.routes) { map.removeLayer(mapLayers.routes); mapLayers.routes = null; }
+    mapLayers.anchors = [];
+    mapLayers.circles = [];
+  }
+
+  // Auto-run on load
+  runOptimize();
+})();
+</script>
+</body>
+</html>
